@@ -1,4 +1,5 @@
 Spirit11
+
 Overview
 
 This project is built using React (Vite) + JavaScript for the frontend, Node.js & Express.js for the backend, and MongoDB Atlas for the database. It includes authentication using bcrypt for password hashing and JWT tokens for secure user sessions.
