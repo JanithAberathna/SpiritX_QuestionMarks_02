@@ -1,0 +1,781 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini AI Chat Interface</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+    }
+    .setup-container {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .chat-container {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .chat-messages {
+      flex-grow: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+    }
+    .message {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 5px;
+      max-width: 80%;
+      white-space: pre-wrap;
+    }
+    .user-message {
+      background-color: #e3f2fd;
+      margin-left: auto;
+    }
+    .bot-message {
+      background-color: #f1f1f1;
+      margin-right: auto;
+    }
+    .input-container {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid #ddd;
+    }
+    #messageInput {
+      flex-grow: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    button {
+      padding: 10px 15px;
+      margin-left: 10px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .hidden {
+      display: none;
+    }
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border-left-color: #09f;
+      animation: spin 1s ease infinite;
+      margin: 0 auto;
+      display: none;
+    }
+    .file-info {
+      background-color: #f8f8f8;
+      padding: 10px;
+      border-radius: 5px;
+      border-left: 4px solid #4285f4;
+      margin-bottom: 10px;
+    }
+    .error {
+      color: #d32f2f;
+      background-color: #ffebee;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+      display: none;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gemini AI Chat Interface</h1>
+    <div id="setupContainer" class="setup-container">
+      <form id="startForm">
+        <input type="text" id="initialPrompt" placeholder="Initial prompt" value="give all players name">
+        <button type="submit" id="startButton">Start Chat</button>
+        <div id="startSpinner" class="spinner"></div>
+        <div id="apiError" class="error"></div>
+      </form>
+    </div>
+    <div id="chatContainer" class="chat-container hidden">
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="input-container">
+        <input type="text" id="messageInput" placeholder="Type your message...">
+        <button id="sendButton">Send</button>
+        <div id="messageSpinner" class="spinner"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    let currentSessionId = null;
+
+    document.getElementById('startForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const initialPrompt = document.getElementById('initialPrompt').value;
+      const startButton = document.getElementById('startButton');
+      const startSpinner = document.getElementById('startSpinner');
+      const apiError = document.getElementById('apiError');
+
+      // Reset any previous error
+      apiError.style.display = "none";
+
+      // Prepare data
+      const formData = {
+        initialPrompt: initialPrompt
+      };
+
+      // Disable button and show spinner
+      startButton.disabled = true;
+      startSpinner.style.display = 'block';
+
+      try {
+        const response = await fetch('/chat/init', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to initialize chat');
+        }
+
+        currentSessionId = data.sessionId;
+
+        // Switch to chat interface
+        document.getElementById('setupContainer').classList.add('hidden');
+        document.getElementById('chatContainer').classList.remove('hidden');
+
+        // Add initial response
+        addBotMessage(data.response);
+
+      } catch (error) {
+        apiError.textContent = error.message;
+        apiError.style.display = "block";
+      } finally {
+        startButton.disabled = false;
+        startSpinner.style.display = 'none';
+      }
+    });
+
+    document.getElementById('sendButton').addEventListener('click', sendMessage);
+    document.getElementById('messageInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    async function sendMessage() {
+      const messageInput = document.getElementById('messageInput');
+      const sendButton = document.getElementById('sendButton');
+      const messageSpinner = document.getElementById('messageSpinner');
+
+      const message = messageInput.value.trim();
+      if (!message || !currentSessionId) return;
+
+      // Add user message to chat
+      addUserMessage(message); // Corrected function call
+
+      // Clear input
+      messageInput.value = '';
+
+      // Disable button and show spinner
+      sendButton.disabled = true;
+      messageSpinner.style.display = 'block';
+
+      try {
+        const response = await fetch('/chat/message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            message: message
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to send message');
+        }
+
+        // Add bot response
+        addBotMessage(data.response);
+
+      } catch (error) {
+        addBotMessage("Error: " + error.message);
+      } finally {
+        sendButton.disabled = false;
+        messageSpinner.style.display = 'none';
+      }
+    }
+
+    function addUserMessage(message) { // Corrected function definition
+      const chatMessages = document.getElementById('chatMessages');
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'user-message');
+      messageElement.textContent = message;
+      chatMessages.appendChild(messageElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addBotMessage(message) {
+      const chatMessages = document.getElementById('chatMessages');
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'bot-message');
+      messageElement.textContent = message;
+      chatMessages.appendChild(messageElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  </script>
+</body>
+</html> -->
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprinter AI Chat Interface</title>
+  <style>
+    :root {
+      --primary-color: #3a86ff;
+      --primary-dark: #2667cc;
+      --secondary-color: #ff006e;
+      --bg-color: #f8f9fa;
+      --bot-message-bg: #ffffff;
+      --user-message-bg: #e6f2ff;
+      --border-radius: 12px;
+      --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-color);
+      color: #333;
+      line-height: 1.6;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      height: 100vh;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      background-color: white;
+    }
+    
+    header {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .logo-icon {
+      font-size: 24px;
+      background-color: white;
+      color: var(--primary-color);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .logo-text {
+      font-size: 24px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    
+    .setup-container {
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 30px;
+      border-radius: var(--border-radius);
+      background: white;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    }
+    
+    .setup-title {
+      margin-bottom: 20px;
+      color: #333;
+      font-size: 22px;
+      text-align: center;
+    }
+    
+    .chat-container {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .chat-messages {
+      flex-grow: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background-color: #f5f7fa;
+      scroll-behavior: smooth;
+    }
+    
+    .message {
+      margin-bottom: 15px;
+      padding: 12px 16px;
+      border-radius: 18px;
+      max-width: 75%;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      position: relative;
+      animation: fadeIn 0.3s ease-in-out;
+      line-height: 1.5;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .user-message {
+      background-color: var(--user-message-bg);
+      color: #333;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .bot-message {
+      background-color: var(--bot-message-bg);
+      color: #333;
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+    }
+    
+    .message-time {
+      font-size: 11px;
+      color: #999;
+      text-align: right;
+      margin-top: 5px;
+    }
+    
+    .input-container {
+      display: flex;
+      padding: 15px 20px;
+      background-color: white;
+      border-top: 1px solid #eaeaea;
+    }
+    
+    #messageInput {
+      flex-grow: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      font-size: 14px;
+      transition: border 0.3s;
+      outline: none;
+    }
+    
+    #messageInput:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(58, 134, 255, 0.1);
+    }
+    
+    #startForm {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    #initialPrompt {
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: var(--border-radius);
+      font-size: 14px;
+      outline: none;
+      transition: border 0.3s;
+    }
+    
+    #initialPrompt:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(58, 134, 255, 0.1);
+    }
+    
+    button {
+      padding: 12px 20px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    button:hover {
+      background-color: var(--primary-dark);
+    }
+    
+    button:active {
+      transform: scale(0.98);
+    }
+    
+    button:disabled {
+      background-color: #b0b0b0;
+      cursor: not-allowed;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    
+    .error {
+      color: #e53935;
+      background-color: #ffebee;
+      padding: 12px;
+      border-radius: var(--border-radius);
+      margin-top: 15px;
+      display: none;
+      font-size: 14px;
+      border-left: 4px solid #e53935;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .send-button-icon {
+      font-size: 18px;
+    }
+    
+    .typing-indicator {
+      padding: 12px 16px;
+      background-color: var(--bot-message-bg);
+      border-radius: 18px;
+      max-width: 75px;
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+      display: none;
+    }
+    
+    .typing-indicator span {
+      height: 8px;
+      width: 8px;
+      float: left;
+      margin: 0 1px;
+      background-color: #9E9EA1;
+      display: block;
+      border-radius: 50%;
+      opacity: 0.4;
+    }
+    
+    .typing-indicator span:nth-of-type(1) {
+      animation: 1s blink infinite 0.3333s;
+    }
+    
+    .typing-indicator span:nth-of-type(2) {
+      animation: 1s blink infinite 0.6666s;
+    }
+    
+    .typing-indicator span:nth-of-type(3) {
+      animation: 1s blink infinite 0.9999s;
+    }
+    
+    @keyframes blink {
+      50% { opacity: 1; }
+    }
+    
+    @media (max-width: 600px) {
+      .message {
+        max-width: 85%;
+      }
+      
+      button {
+        padding: 12px 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">Sprinter</div>
+      </div>
+      <div>AI Assistant</div>
+    </header>
+    
+    <div id="setupContainer" class="setup-container">
+      <h2 class="setup-title">Start a conversation with Sprinter</h2>
+      <form id="startForm">
+        <input type="text" id="initialPrompt" placeholder="What would you like to talk about?" value="give all players name">
+        <button type="submit" id="startButton">
+          <span>Start Chat</span>
+          <div id="startSpinner" class="spinner"></div>
+        </button>
+        <div id="apiError" class="error"></div>
+      </form>
+    </div>
+    
+    <div id="chatContainer" class="chat-container hidden">
+      <div id="chatMessages" class="chat-messages">
+        <div class="typing-indicator" id="typingIndicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+      <div class="input-container">
+        <input type="text" id="messageInput" placeholder="Type your message here...">
+        <button id="sendButton">
+          <span class="send-button-icon">↑</span>
+          <div id="messageSpinner" class="spinner"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let currentSessionId = null;
+
+    document.getElementById('startForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const initialPrompt = document.getElementById('initialPrompt').value;
+      const startButton = document.getElementById('startButton');
+      const startSpinner = document.getElementById('startSpinner');
+      const apiError = document.getElementById('apiError');
+
+      // Reset any previous error
+      apiError.style.display = "none";
+
+      // Prepare data
+      const formData = {
+        initialPrompt: initialPrompt
+      };
+
+      // Disable button and show spinner
+      startButton.disabled = true;
+      startSpinner.style.display = 'block';
+
+      try {
+        const response = await fetch('/chat/init', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to initialize chat');
+        }
+
+        currentSessionId = data.sessionId;
+
+        // Switch to chat interface
+        document.getElementById('setupContainer').classList.add('hidden');
+        document.getElementById('chatContainer').classList.remove('hidden');
+
+        // Add initial response
+        addBotMessage(data.response);
+
+      } catch (error) {
+        apiError.textContent = error.message;
+        apiError.style.display = "block";
+      } finally {
+        startButton.disabled = false;
+        startSpinner.style.display = 'none';
+      }
+    });
+
+    document.getElementById('sendButton').addEventListener('click', sendMessage);
+    document.getElementById('messageInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    async function sendMessage() {
+      const messageInput = document.getElementById('messageInput');
+      const sendButton = document.getElementById('sendButton');
+      const messageSpinner = document.getElementById('messageSpinner');
+      const typingIndicator = document.getElementById('typingIndicator');
+
+      const message = messageInput.value.trim();
+      if (!message || !currentSessionId) return;
+
+      // Add user message to chat
+      addUserMessage(message);
+
+      // Clear input
+      messageInput.value = '';
+
+      // Disable button and show spinner
+      sendButton.disabled = true;
+      messageSpinner.style.display = 'block';
+      
+      // Show typing indicator
+      typingIndicator.style.display = 'block';
+      
+      // Scroll to bottom to show typing indicator
+      const chatMessages = document.getElementById('chatMessages');
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      try {
+        const response = await fetch('/chat/message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            message: message
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to send message');
+        }
+
+        // Hide typing indicator
+        typingIndicator.style.display = 'none';
+        
+        // Add bot response
+        addBotMessage(data.response);
+
+      } catch (error) {
+        // Hide typing indicator
+        typingIndicator.style.display = 'none';
+        
+        addBotMessage("Error: " + error.message);
+      } finally {
+        sendButton.disabled = false;
+        messageSpinner.style.display = 'none';
+      }
+    }
+
+    function getCurrentTime() {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = now.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      hours = hours % 12;
+      hours = hours ? hours : 12; // the hour '0' should be '12'
+      const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+      
+      return hours + ':' + minutesStr + ' ' + ampm;
+    }
+
+    function addUserMessage(message) {
+      const chatMessages = document.getElementById('chatMessages');
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'user-message');
+      
+      const messageContent = document.createElement('div');
+      messageContent.textContent = message;
+      
+      const timeElement = document.createElement('div');
+      timeElement.classList.add('message-time');
+      timeElement.textContent = getCurrentTime();
+      
+      messageElement.appendChild(messageContent);
+      messageElement.appendChild(timeElement);
+      
+      chatMessages.appendChild(messageElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addBotMessage(message) {
+      const chatMessages = document.getElementById('chatMessages');
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'bot-message');
+      
+      const messageContent = document.createElement('div');
+      messageContent.textContent = message;
+      
+      const timeElement = document.createElement('div');
+      timeElement.classList.add('message-time');
+      timeElement.textContent = getCurrentTime();
+      
+      messageElement.appendChild(messageContent);
+      messageElement.appendChild(timeElement);
+      
+      chatMessages.appendChild(messageElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  </script>
+</body>
+</html>
