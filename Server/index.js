@@ -30,7 +30,8 @@ const chatRoutes = require("./routes/chatbot");
 
 // Use Routes
 app.use("/chat", chatRoutes);
-
+const playerRoutes = require('./routes/PlayerRoutes.js')
+app.use('/',playerRoutes);
 // Serve Home Page
 app.get("/bot", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
